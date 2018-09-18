@@ -1,0 +1,85 @@
+diff --git a/hwcomposer/hwcomposer_backend.cpp b/hwcomposer/hwcomposer_backend.cpp
+index 94f019d..0989057 100644
+--- a/hwcomposer/hwcomposer_backend.cpp
++++ b/hwcomposer/hwcomposer_backend.cpp
+@@ -42,9 +42,9 @@
+ #include <dlfcn.h>
+ 
+ #include "hwcomposer_backend.h"
+-#ifdef HWC_DEVICE_API_VERSION_0_1
+-#include "hwcomposer_backend_v0.h"
+-#endif
++//#ifdef HWC_DEVICE_API_VERSION_0_1
++//#include "hwcomposer_backend_v0.h"
++//#endif
+ #include "hwcomposer_backend_v10.h"
+ #include "hwcomposer_backend_v11.h"
+ 
+@@ -122,26 +122,26 @@ HwComposerBackend::create()
+     fprintf(stderr, " * Module: %p\n", hwc_device->module);
+     fprintf(stderr, "== hwcomposer device ==\n");
+ 
+-#ifdef HWC_DEVICE_API_VERSION_0_1
+-    // Special-case for old hw adaptations that have the version encoded in
+-    // legacy format, we have to check hwc_device->version directly, because
+-    // the constants are actually encoded in the old format
+-    if ((hwc_device->version == HWC_DEVICE_API_VERSION_0_1) ||
+-        (hwc_device->version == HWC_DEVICE_API_VERSION_0_2) ||
+-        (hwc_device->version == HWC_DEVICE_API_VERSION_0_3)) {
+-        return new HwComposerBackend_v0(hwc_module, hwc_device, libminisf);
+-    }
+-#endif
++//#ifdef HWC_DEVICE_API_VERSION_0_1
++//    // Special-case for old hw adaptations that have the version encoded in
++//    // legacy format, we have to check hwc_device->version directly, because
++//    // the constants are actually encoded in the old format
++//    if ((hwc_device->version == HWC_DEVICE_API_VERSION_0_1) ||
++//        (hwc_device->version == HWC_DEVICE_API_VERSION_0_2) ||
++//        (hwc_device->version == HWC_DEVICE_API_VERSION_0_3)) {
++//        return new HwComposerBackend_v0(hwc_module, hwc_device, libminisf);
++//    }
++//#endif
+ 
+     // Determine which backend we use based on the supported module API version
+     switch (version) {
+-#ifdef HWC_DEVICE_API_VERSION_0_1
+-        case HWC_DEVICE_API_VERSION_0_1:
+-        case HWC_DEVICE_API_VERSION_0_2:
+-        case HWC_DEVICE_API_VERSION_0_3:
+-            return new HwComposerBackend_v0(hwc_module, hwc_device, libminisf);
+-            break;
+-#endif
++//#ifdef HWC_DEVICE_API_VERSION_0_1
++//        case HWC_DEVICE_API_VERSION_0_1:
++//        case HWC_DEVICE_API_VERSION_0_2:
++//        case HWC_DEVICE_API_VERSION_0_3:
++//            return new HwComposerBackend_v0(hwc_module, hwc_device, libminisf);
++//            break;
++//#endif
+ #ifdef HWC_DEVICE_API_VERSION_1_0
+         case HWC_DEVICE_API_VERSION_1_0:
+             return new HwComposerBackend_v10(hwc_module, hwc_device, libminisf);
+diff --git a/hwcomposer/hwcomposer_backend_v0.cpp b/hwcomposer/hwcomposer_backend_v0.cpp
+index 22e2552..0c63991 100644
+--- a/hwcomposer/hwcomposer_backend_v0.cpp
++++ b/hwcomposer/hwcomposer_backend_v0.cpp
+@@ -39,9 +39,9 @@
+ **
+ ****************************************************************************/
+ #include <android-version.h>
+-#if ANDROID_VERSION_MAJOR <= 4
+-#include "hwcomposer_backend_v0.h"
+-#ifdef HWC_DEVICE_API_VERSION_0_1
++//#if ANDROID_VERSION_MAJOR <= 4
++//#include "hwcomposer_backend_v0.h"
++#ifdef HWC_DEVICE_API_VERSION_0_1zz
+ 
+ 
+ HwComposerBackend_v0::HwComposerBackend_v0(hw_module_t *hwc_module, hw_device_t *hw_device, void *libminisf)
+@@ -120,5 +120,5 @@ HwComposerBackend_v0::refreshRate()
+     qDebug("VSync: %dns, %ffps", vsyncVal, fps);
+     return fps;
+ }
+-#endif
++//#endif
+ #endif

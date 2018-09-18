@@ -1,0 +1,486 @@
+commit 14133081eb5dffeef70e88d5b90bf4e4f1c21da3
+Author: elros34 <elros34@users.noreply.github.com>
+Date:   Mon Aug 27 18:53:35 2018 +0200
+
+    Hybris patch
+
+diff --git a/include/log/logger.h b/include/log/logger.h
+index 04f3fb0..6a3f1dc 100644
+--- a/include/log/logger.h
++++ b/include/log/logger.h
+@@ -43,10 +43,10 @@ struct logger_entry_v2 {
+     char        msg[0];    /* the entry's payload */
+ };
+ 
+-#define LOGGER_LOG_MAIN		"log/main"
+-#define LOGGER_LOG_RADIO	"log/radio"
+-#define LOGGER_LOG_EVENTS	"log/events"
+-#define LOGGER_LOG_SYSTEM	"log/system"
++#define LOGGER_LOG_MAIN		"alog/main"
++#define LOGGER_LOG_RADIO	"alog/radio"
++#define LOGGER_LOG_EVENTS	"alog/events"
++#define LOGGER_LOG_SYSTEM	"alog/system"
+ 
+ /*
+  * The maximum size of the log entry payload that can be
+diff --git a/init/devices.c b/init/devices.c
+index 1893642..d9e2fcb 100644
+--- a/init/devices.c
++++ b/init/devices.c
+@@ -632,7 +632,7 @@ static void handle_generic_device_event(struct uevent *uevent)
+          make_dir(base, 0755);
+      } else if(!strncmp(uevent->subsystem, "misc", 4) &&
+                  !strncmp(name, "log_", 4)) {
+-         base = "/dev/log/";
++         base = "/dev/alog/";
+          make_dir(base, 0755);
+          name += 4;
+      } else
+diff --git a/init/init.c b/init/init.c
+index 36b2bca..e477060 100755
+--- a/init/init.c
++++ b/init/init.c
+@@ -1032,16 +1032,8 @@ int main(int argc, char **argv)
+          * together in the initramdisk on / and then we'll
+          * let the rc file figure out the rest.
+          */
+-    mkdir("/dev", 0755);
+-    mkdir("/proc", 0755);
+-    mkdir("/sys", 0755);
+ 
+-    mount("tmpfs", "/dev", "tmpfs", MS_NOSUID, "mode=0755");
+-    mkdir("/dev/pts", 0755);
+     mkdir("/dev/socket", 0755);
+-    mount("devpts", "/dev/pts", "devpts", 0, NULL);
+-    mount("proc", "/proc", "proc", 0, NULL);
+-    mount("sysfs", "/sys", "sysfs", 0, NULL);
+ 
+         /* indicate that booting is in progress to background fw loaders, etc */
+     close(open("/dev/.booting", O_WRONLY | O_CREAT, 0000));
+@@ -1079,6 +1071,9 @@ int main(int argc, char **argv)
+ 
+     is_charger = !strcmp(bootmode, "charger");
+ 
++    /* FIXME: Mer will assume we're not on charger for now */
++    is_charger = 0;
++
+     INFO("property init\n");
+     if (!is_charger)
+         property_load_boot_defaults();
+@@ -1124,6 +1119,8 @@ int main(int argc, char **argv)
+         /* run all property triggers based on current state of the properties */
+     queue_builtin_action(queue_property_triggers_action, "queue_property_triggers");
+ 
++    /* Run actions when all boot up is done and init is ready */
++    action_for_each_trigger("ready", action_add_queue_tail);
+ 
+ #if BOOTCHART
+     queue_builtin_action(bootchart_init_action, "bootchart_init");
+diff --git a/init/property_service.c b/init/property_service.c
+index 9ac2781..7256a3e 100644
+--- a/init/property_service.c
++++ b/init/property_service.c
+@@ -358,6 +358,7 @@ int property_set(const char *name, const char *value)
+ void handle_property_set_fd()
+ {
+     prop_msg msg;
++    int n;
+     int s;
+     int r;
+     int res;
+@@ -366,6 +367,8 @@ void handle_property_set_fd()
+     socklen_t addr_size = sizeof(addr);
+     socklen_t cr_size = sizeof(cr);
+     char * source_ctx = NULL;
++    char * rproperty = NULL;
++    const prop_info *pi;
+ 
+     if ((s = accept(property_set_fd, (struct sockaddr *) &addr, &addr_size)) < 0) {
+         return;
+@@ -424,6 +427,32 @@ void handle_property_set_fd()
+         }
+         freecon(source_ctx);
+         break;
++    case PROP_MSG_GETPROP:
++        msg.name[PROP_NAME_MAX-1] = 0;
++        msg.value[0] = 0;
++
++        if (msg.name) {
++          /* If we have a value, copy it over, otherwise returns the default */
++          rproperty = malloc(PROP_VALUE_MAX);
++          int ret = property_get(msg.name, rproperty);
++          if (ret) {
++            strlcpy(msg.value, rproperty, sizeof(msg.value));
++          }
++          free(rproperty);
++        }
++
++        /* Send the property value back */
++        r = TEMP_FAILURE_RETRY(send(s, &msg, sizeof(msg), 0));
++        close(s);
++        break;
++    case PROP_MSG_LISTPROP:
++        for(n = 0; (pi = __system_property_find_nth(n)); n++) {
++          msg.name[0] = msg.value[0] = 0;
++          __system_property_read(pi, msg.name, msg.value);
++          TEMP_FAILURE_RETRY(send(s, &msg, sizeof(msg), 0));
++        }
++        close(s);
++        break;
+ 
+     default:
+         close(s);
+diff --git a/logcat/logcat.cpp b/logcat/logcat.cpp
+index d44c679..4a59276 100644
+--- a/logcat/logcat.cpp
++++ b/logcat/logcat.cpp
+@@ -30,7 +30,7 @@ static int g_tail_lines = 0;
+ /* logd prefixes records with a length field */
+ #define RECORD_LENGTH_FIELD_SIZE_BYTES sizeof(uint32_t)
+ 
+-#define LOG_FILE_DIR    "/dev/log/"
++#define LOG_FILE_DIR    "/dev/alog/"
+ 
+ struct queued_entry_t {
+     union {
+diff --git a/rootdir/init.environ.rc.in b/rootdir/init.environ.rc.in
+index d2f74c0..6d3576e 100644
+--- a/rootdir/init.environ.rc.in
++++ b/rootdir/init.environ.rc.in
+@@ -1,7 +1,8 @@
+ # set up the global environment
+ on init
+     export PATH /sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
+-    export LD_LIBRARY_PATH /vendor/lib:/system/lib
++	# This is not 64-bit safe -stskeeps
++    export LD_LIBRARY_PATH /usr/libexec/droid-hybris/lib-dev-alog:/vendor/lib:/system/lib
+     export ANDROID_BOOTLOGO 1
+     export ANDROID_ROOT /system
+     export ANDROID_ASSETS /system/app
+diff --git a/rootdir/init.rc b/rootdir/init.rc
+index 86e124f..5eb9c56 100644
+--- a/rootdir/init.rc
++++ b/rootdir/init.rc
+@@ -5,31 +5,27 @@
+ #
+ 
+ import /init.environ.rc
+-import /init.usb.rc
++# Mer handles usb stuff
++#import /init.usb.rc
+ import /init.${ro.hardware}.rc
+ import /init.trace.rc
+ 
+ on early-init
+-    # Set init and its forked children's oom_adj.
+-    write /proc/1/oom_adj -16
+-
+     # Set the security context for the init process.
+     # This should occur before anything else (e.g. ueventd) is started.
+     setcon u:r:init:s0
+ 
+-    start ueventd
+ 
+ # create mountpoints
+     mkdir /mnt 0775 root system
+ 
+ on init
+ 
+-sysclktz 0
++	sysclktz 0
+ 
+-loglevel 3
++	loglevel 64
+ 
+ # Backward compatibility
+-    symlink /system/etc /etc
+     symlink /sys/kernel/debug /d
+ 
+ # Right now vendor lives on the same filesystem as system,
+@@ -54,7 +50,8 @@ loglevel 3
+     chown root system /sys/fs/cgroup/memory/sw/tasks
+     chmod 0660 /sys/fs/cgroup/memory/sw/tasks
+ 
+-    mkdir /system
++    # /system is owned by Mer
++    #mkdir /system
+     mkdir /data 0771 system system
+     mkdir /cache 0770 system cache
+     mkdir /config 0500 root root
+@@ -86,7 +83,6 @@ loglevel 3
+ 
+     write /proc/sys/kernel/panic_on_oops 1
+     write /proc/sys/kernel/hung_task_timeout_secs 0
+-    write /proc/cpu/alignment 4
+     write /proc/sys/kernel/sched_latency_ns 10000000
+     write /proc/sys/kernel/sched_wakeup_granularity_ns 2000000
+     write /proc/sys/kernel/sched_compat_yield 1
+@@ -99,31 +95,6 @@ loglevel 3
+     write /proc/sys/kernel/sched_rt_runtime_us 950000
+     write /proc/sys/kernel/sched_rt_period_us 1000000
+ 
+-# Create cgroup mount points for process groups
+-    mkdir /dev/cpuctl
+-    mount cgroup none /dev/cpuctl cpu
+-    chown system system /dev/cpuctl
+-    chown system system /dev/cpuctl/tasks
+-    chmod 0660 /dev/cpuctl/tasks
+-    write /dev/cpuctl/cpu.shares 1024
+-    write /dev/cpuctl/cpu.rt_runtime_us 950000
+-    write /dev/cpuctl/cpu.rt_period_us 1000000
+-
+-    mkdir /dev/cpuctl/apps
+-    chown system system /dev/cpuctl/apps/tasks
+-    chmod 0666 /dev/cpuctl/apps/tasks
+-    write /dev/cpuctl/apps/cpu.shares 1024
+-    write /dev/cpuctl/apps/cpu.rt_runtime_us 800000
+-    write /dev/cpuctl/apps/cpu.rt_period_us 1000000
+-
+-    mkdir /dev/cpuctl/apps/bg_non_interactive
+-    chown system system /dev/cpuctl/apps/bg_non_interactive/tasks
+-    chmod 0666 /dev/cpuctl/apps/bg_non_interactive/tasks
+-    # 5.0 %
+-    write /dev/cpuctl/apps/bg_non_interactive/cpu.shares 52
+-    write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_runtime_us 700000
+-    write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_period_us 1000000
+-
+ # qtaguid will limit access to specific data based on group memberships.
+ #   net_bw_acct grants impersonation of socket owners.
+ #   net_bw_stats grants access to other apps' detailed tagged-socket stats.
+@@ -139,11 +110,6 @@ loglevel 3
+     mkdir /dev/fscklogs 0770 root system
+ 
+ on post-fs
+-    # once everything is setup, no need to modify /
+-    mount rootfs rootfs / ro remount
+-    # mount shared so changes propagate into child namespaces
+-    mount rootfs rootfs / shared rec
+-    mount tmpfs tmpfs /mnt/secure private rec
+ 
+     # We chown/chmod /cache again so because mount is run as root + defaults
+     chown system cache /cache
+@@ -263,11 +229,6 @@ on post-fs-data
+     #setprop vold.post_fs_data_done 1
+ 
+ on boot
+-# basic network init
+-    ifup lo
+-    hostname localhost
+-    domainname localdomain
+-
+ # set RLIMIT_NICE to allow priorities from 19 to -20
+     setrlimit 13 40 40
+ 
+@@ -328,7 +289,6 @@ on boot
+     chown system system /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+     chmod 0660 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
+ 
+-    chown system system /sys/class/timed_output/vibrator/enable
+     chown system system /sys/class/leds/keyboard-backlight/brightness
+     chown system system /sys/class/leds/lcd-backlight/brightness
+     chown system system /sys/class/leds/button-backlight/brightness
+@@ -339,7 +299,6 @@ on boot
+     chown system system /sys/class/leds/red/device/grpfreq
+     chown system system /sys/class/leds/red/device/grppwm
+     chown system system /sys/class/leds/red/device/blink
+-    chown system system /sys/class/timed_output/vibrator/enable
+     chown system system /sys/module/sco/parameters/disable_esco
+     chown system system /sys/kernel/ipv4/tcp_wmem_min
+     chown system system /sys/kernel/ipv4/tcp_wmem_def
+@@ -348,10 +307,13 @@ on boot
+     chown system system /sys/kernel/ipv4/tcp_rmem_def
+     chown system system /sys/kernel/ipv4/tcp_rmem_max
+     chown root radio /proc/cmdline
++    
++    # Allow system group to trigger vibrator
++    chmod 0664 /sys/class/timed_output/vibrator/enable
+ 
+ # Set these so we can remotely update SELinux policy
+-    chown system system /sys/fs/selinux/load
+-    chown system system /sys/fs/selinux/enforce
++#    chown system system /sys/fs/selinux/load
++#    chown system system /sys/fs/selinux/enforce
+ 
+ # Define TCP buffer sizes for various networks
+ #   ReadMin, ReadInitial, ReadMax, WriteMin, WriteInitial, WriteMax,
+@@ -370,9 +332,14 @@ on boot
+     class_start core
+     class_start main
+ 
++# Never gets called, since Mer does its own 'mount_all'
+ on nonencrypted
+     class_start late_start
+ 
++# Mer needs to set this property when fs units are mounted
++on property:droid.late_start=trigger_late_start
++    class_start late_start
++
+ on charger
+     class_start charger
+ 
+@@ -405,10 +372,11 @@ on property:sys.sysctl.extra_free_kbytes=*
+ 
+ ## Daemon processes to be run by init.
+ ##
+-service ueventd /sbin/ueventd
+-    class core
+-    critical
+-    seclabel u:r:ueventd:s0
++# Not used by Mer
++#service ueventd /sbin/ueventd
++#    class core
++#    critical
++#    seclabel u:r:ueventd:s0
+ 
+ service healthd /sbin/healthd
+     class core
+@@ -445,27 +413,47 @@ service adbd /sbin/adbd
+ on property:ro.kernel.qemu=1
+     start adbd
+ 
+-service servicemanager /system/bin/servicemanager
++# Custom servicemanager allows user nemo to register services
++service servicemanager /usr/libexec/droid-hybris/system/bin/servicemanager
+     class core
+     user system
+     group system
+     critical
+-    onrestart restart healthd
+-    onrestart restart zygote
+-    onrestart restart media
+-    onrestart restart surfaceflinger
+-    onrestart restart drm
+-
+-service vold /system/bin/vold
+-    class core
+-    socket vold stream 0660 root mount
+-    ioprio be 2
++    onrestart restart minimedia
++    onrestart restart minisf 
++    onrestart restart miniaf  
++#    onrestart restart healthd
++#    onrestart restart zygote
++#    onrestart restart media
++#    onrestart restart surfaceflinger
++#    onrestart restart drm
++
++service minimedia /usr/libexec/droid-hybris/system/bin/minimediaservice
++    class main
++    user media
++    group audio camera
++    ioprio rt 4
+ 
+-service netd /system/bin/netd
++service minisf /usr/libexec/droid-hybris/system/bin/minisfservice
++   class main
++   user system
++   group graphics
++   
++service miniaf /usr/libexec/droid-hybris/system/bin/miniafservice
+     class main
+-    socket netd stream 0660 root system
+-    socket dnsproxyd stream 0660 root inet
+-    socket mdns stream 0660 root system
++    user system
++    group audio
++
++#service vold /system/bin/vold
++#    class core
++#    socket vold stream 0660 root mount
++#    ioprio be 2
++#
++#service netd /system/bin/netd
++#    class main
++#    socket netd stream 0660 root system
++#    socket dnsproxyd stream 0660 root inet
++#    socket mdns stream 0660 root system
+ 
+ service debuggerd /system/bin/debuggerd
+     class main
+@@ -477,30 +465,36 @@ service ril-daemon /system/bin/rild
+     user root
+     group radio cache inet misc audio log
+ 
++# Disabled in Mer - used only during porting atm
+ service surfaceflinger /system/bin/surfaceflinger
+     class main
+     user system
+     group graphics drmrpc
+     onrestart restart zygote
++    disabled
+ 
++# Disabled in Mer
+ service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
+     class main
+     socket zygote stream 660 root system
+     onrestart write /sys/android_power/request_state wake
+     onrestart write /sys/power/state on
+-    onrestart restart media
+-    onrestart restart netd
++#    onrestart restart media
++#    onrestart restart netd
++    disabled
+ 
+ service drm /system/bin/drmserver
+     class main
+     user drm
+     group drm system inet drmrpc
+ 
++# Disabled in Mer
+ service media /system/bin/mediaserver
+     class main
+     user media
+     group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm
+     ioprio rt 4
++    disabled
+ 
+ service bootanim /system/bin/bootanimation
+     class main
+@@ -533,10 +527,12 @@ service mtpd /system/bin/mtpd
+     disabled
+     oneshot
+ 
++# Disabled in Mer
+ service keystore /system/bin/keystore /data/misc/keystore
+     class main
+     user keystore
+     group keystore drmrpc
++    disabled
+ 
+ service dumpstate /system/bin/dumpstate -s
+     class main
+@@ -544,14 +540,25 @@ service dumpstate /system/bin/dumpstate -s
+     disabled
+     oneshot
+ 
+-service sshd /system/bin/start-ssh
+-    class main
+-    disabled
++# Use Mer sshd
++#service sshd /system/bin/start-ssh
++#    class main
++#    disabled
+ 
+-service mdnsd /system/bin/mdnsd
+-    class main
+-    user mdnsr
+-    group inet net_raw
+-    socket mdnsd stream 0660 mdnsr inet
+-    disabled
++
++# This trigger is run by our modified init after boot has finished
++on ready
++   class_start mer
++
++# Notify Mer's systemd that we're done
++# This is started at the end of boot after both core and main classes
++service droid_init_done /bin/sh /usr/bin/droid/droid-init-done.sh
++    class mer
+     oneshot
++    
++# Gracefully shutdown android init services using new 'hybris.shutdown' property instead of killing them.
++on property:hybris.shutdown=*
++    class_stop late_start
++    class_stop main
++    class_stop core
++    

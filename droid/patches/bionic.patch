@@ -1,0 +1,316 @@
+commit 3ad889930d11d16b069962819ab1f03ce9258d8c
+Author: elros34 <elros34@users.noreply.github.com>
+Date:   Sun Apr 29 13:38:24 2018 +0200
+
+    Hybris patch
+
+diff --git a/libc/Android.mk b/libc/Android.mk
+index 1b02b78..88acf43 100644
+--- a/libc/Android.mk
++++ b/libc/Android.mk
+@@ -230,7 +230,6 @@ libc_bionic_src_files := \
+     bionic/sbrk.cpp \
+     bionic/scandir.cpp \
+     bionic/sched_getaffinity.cpp \
+-    bionic/__set_errno.cpp \
+     bionic/setlocale.cpp \
+     bionic/signalfd.cpp \
+     bionic/sigwait.cpp \
+@@ -703,7 +702,6 @@ LOCAL_SYSTEM_SHARED_LIBRARIES :=
+ 
+ include $(BUILD_STATIC_LIBRARY)
+ 
+-
+ # ========================================================
+ # libc_tzcode.a - upstream 'tzcode' code
+ # ========================================================
+@@ -830,6 +828,7 @@ include $(CLEAR_VARS)
+ LOCAL_SRC_FILES := \
+ 	$(libc_arch_static_src_files) \
+ 	$(libc_static_common_src_files) \
++	bionic/__set_errno.cpp \
+ 	bionic/libc_init_static.cpp
+ 
+ LOCAL_C_INCLUDES := $(libc_common_c_includes)
+@@ -844,6 +843,36 @@ LOCAL_SYSTEM_SHARED_LIBRARIES :=
+ 
+ include $(BUILD_STATIC_LIBRARY)
+ 
++# ========================================================
++# libdsyscalls.so
++# ========================================================
++
++include $(CLEAR_VARS)
++
++LOCAL_SRC_FILES := \
++	$(libc_arch_static_src_files) \
++	$(libc_static_common_src_files) \
++	bionic/dlmalloc.c \
++	bionic/malloc_debug_common.cpp \
++	bionic/libc_init_static.cpp \
++	hybris/libdsyscalls.c
++
++LOCAL_C_INCLUDES := $(libc_common_c_includes)
++LOCAL_CFLAGS := $(libc_common_cflags) \
++                -DLIBC_STATIC \
++                -std=gnu99
++
++LOCAL_MODULE:= libdsyscalls
++
++LOCAL_SHARED_LIBRARIES := libdl
++LOCAL_WHOLE_STATIC_LIBRARIES := libc_common
++LOCAL_SYSTEM_SHARED_LIBRARIES :=
++
++LOCAL_LDFLAGS := -Wl,--exclude-libs=libgcc.a
++
++LOCAL_MODULE_TAGS := optional
++
++include $(BUILD_SHARED_LIBRARY)
+ 
+ # ========================================================
+ # libc.a
+@@ -853,6 +882,7 @@ include $(CLEAR_VARS)
+ LOCAL_SRC_FILES := \
+ 	$(libc_arch_static_src_files) \
+ 	$(libc_static_common_src_files) \
++	bionic/__set_errno.cpp \
+ 	bionic/dlmalloc.c \
+ 	bionic/malloc_debug_common.cpp \
+ 	bionic/libc_init_static.cpp
+@@ -883,9 +913,11 @@ include $(CLEAR_VARS)
+ LOCAL_CFLAGS := $(libc_common_cflags) -std=gnu99 -DPTHREAD_DEBUG -DPTHREAD_DEBUG_ENABLED=0
+ LOCAL_C_INCLUDES := $(libc_common_c_includes)
+ 
++LOCAL_LDFLAGS := -Wl,--no-fatal-warnings
+ LOCAL_SRC_FILES := \
+ 	$(libc_arch_dynamic_src_files) \
+ 	$(libc_static_common_src_files) \
++	bionic/__set_errno.cpp \
+ 	bionic/dlmalloc.c \
+ 	bionic/malloc_debug_common.cpp \
+ 	bionic/pthread_debug.cpp \
+@@ -914,7 +946,7 @@ LOCAL_REQUIRED_MODULES := tzdata
+ # create an "cloaked" dependency on libgcc.a in libc though the libraries, which is not what
+ # you wanted!
+ 
+-LOCAL_SHARED_LIBRARIES := libdl
++LOCAL_SHARED_LIBRARIES := libdl libdsyscalls
+ LOCAL_WHOLE_STATIC_LIBRARIES := libc_common
+ LOCAL_SYSTEM_SHARED_LIBRARIES :=
+ 
+@@ -980,6 +1012,7 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+ LOCAL_SHARED_LIBRARIES := libc libdl
+ LOCAL_WHOLE_STATIC_LIBRARIES := libc_common
+ LOCAL_SYSTEM_SHARED_LIBRARIES :=
++LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
+ 
+ # Don't install on release build
+ LOCAL_MODULE_TAGS := eng debug
+diff --git a/libc/bionic/__set_errno.cpp b/libc/bionic/__set_errno.cpp
+index af6a68e..e6ddcac 100644
+--- a/libc/bionic/__set_errno.cpp
++++ b/libc/bionic/__set_errno.cpp
+@@ -32,7 +32,9 @@
+ // C/C++ code should just assign 'errno' instead.
+ 
+ // TODO: this should be __LIBC_HIDDEN__ but was exposed in <errno.h> in the NDK.
++#ifdef LIBC_STATIC
+ extern "C" int __set_errno(int n) {
+   errno = n;
+   return -1;
+ }
++#endif
+diff --git a/libc/bionic/libc_init_dynamic.cpp b/libc/bionic/libc_init_dynamic.cpp
+index 88e87a7..2927cdd 100644
+--- a/libc/bionic/libc_init_dynamic.cpp
++++ b/libc/bionic/libc_init_dynamic.cpp
+@@ -80,7 +80,7 @@ __attribute__((constructor)) static void __libc_preinit() {
+   malloc_debug_init();
+ }
+ 
+-__LIBC_HIDDEN__ void __libc_postfini() {
++void __libc_postfini() {
+   // A hook for the debug malloc library to let it know that we're shutting down.
+   malloc_debug_fini();
+ }
+diff --git a/libc/bionic/libc_logging.cpp b/libc/bionic/libc_logging.cpp
+index 6bf7415..c5e6762 100644
+--- a/libc/bionic/libc_logging.cpp
++++ b/libc/bionic/libc_logging.cpp
+@@ -420,7 +420,7 @@ int __libc_format_fd(int fd, const char* format, ...) {
+ }
+ 
+ static int __libc_write_log(int priority, const char* tag, const char* msg) {
+-  int main_log_fd = TEMP_FAILURE_RETRY(open("/dev/log/main", O_CLOEXEC | O_WRONLY));
++  int main_log_fd = TEMP_FAILURE_RETRY(open("/dev/alog/main", O_CLOEXEC | O_WRONLY));
+   if (main_log_fd == -1) {
+     return -1;
+   }
+@@ -462,7 +462,7 @@ static int __libc_android_log_event(int32_t tag, char type, const void* payload,
+   vec[2].iov_base = const_cast<void*>(payload);
+   vec[2].iov_len = len;
+ 
+-  int event_log_fd = TEMP_FAILURE_RETRY(open("/dev/log/events", O_CLOEXEC | O_WRONLY));
++  int event_log_fd = TEMP_FAILURE_RETRY(open("/dev/alog/events", O_CLOEXEC | O_WRONLY));
+   if (event_log_fd == -1) {
+     return -1;
+   }
+diff --git a/libc/bionic/system_properties.c b/libc/bionic/system_properties.c
+index 4c2e5a2..75a334b 100644
+--- a/libc/bionic/system_properties.c
++++ b/libc/bionic/system_properties.c
+@@ -466,6 +466,12 @@ int __system_property_read(const prop_info *pi, char *name, char *value)
+ 
+ int __system_property_get(const char *name, char *value)
+ {
++    /* In case we're called from Ubuntu */
++    if (__system_property_area__ == NULL) {
++        value[0] = 0;
++        return 0;
++    }
++
+     const prop_info *pi = __system_property_find(name);
+ 
+     if(pi != 0) {
+diff --git a/libc/hybris/libdsyscalls.c b/libc/hybris/libdsyscalls.c
+new file mode 100644
+index 0000000..dad50af
+--- /dev/null
++++ b/libc/hybris/libdsyscalls.c
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2007 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <errno.h>
++
++/* Define __set_errno here so it can be hijacked by libhybris
++ * at runtime (called from __set_syscall_errno)
++ */
++
++int __set_errno(int n)
++{
++    errno = n;
++    return -1;
++}
+diff --git a/libc/include/sys/_system_properties.h b/libc/include/sys/_system_properties.h
+index 5eee7f0..d0062a6 100644
+--- a/libc/include/sys/_system_properties.h
++++ b/libc/include/sys/_system_properties.h
+@@ -58,6 +58,8 @@ struct prop_msg
+ };
+ 
+ #define PROP_MSG_SETPROP 1
++#define PROP_MSG_GETPROP 2
++#define PROP_MSG_LISTPROP 3
+     
+ /*
+ ** Rules:
+diff --git a/libc/private/bionic_tls.h b/libc/private/bionic_tls.h
+index d15b1ca..e257f66 100644
+--- a/libc/private/bionic_tls.h
++++ b/libc/private/bionic_tls.h
+@@ -47,12 +47,12 @@ __BEGIN_DECLS
+ enum {
+   TLS_SLOT_SELF = 0, /* The kernel requires this specific slot for x86. */
+   TLS_SLOT_THREAD_ID,
+-  TLS_SLOT_ERRNO,
++  TLS_SLOT_ERRNO = 5,
+ 
+   /* These two aren't used by bionic itself, but allow the graphics code to
+    * access TLS directly rather than using the pthread API. */
+-  TLS_SLOT_OPENGL_API = 3,
+-  TLS_SLOT_OPENGL = 4,
++  TLS_SLOT_OPENGL_API = 6,
++  TLS_SLOT_OPENGL = 7,
+ 
+   /* This slot is only used to pass information from the dynamic linker to
+    * libc.so when the C library is loaded in to memory. The C runtime init
+@@ -60,7 +60,7 @@ enum {
+    * we reuse an existing location that isn't needed during libc startup. */
+   TLS_SLOT_BIONIC_PREINIT = TLS_SLOT_OPENGL_API,
+ 
+-  TLS_SLOT_STACK_GUARD = 5, /* GCC requires this specific slot for x86. */
++  TLS_SLOT_STACK_GUARD = 8, /* GCC requires this specific slot for x86. */
+   TLS_SLOT_DLERROR,
+ 
+   TLS_SLOT_FIRST_USER_SLOT /* Must come last! */
+diff --git a/linker/Android.mk b/linker/Android.mk
+index d1773a8..4becf5a 100644
+--- a/linker/Android.mk
++++ b/linker/Android.mk
+@@ -40,6 +40,7 @@ endif
+ 
+ LOCAL_MODULE:= linker
+ LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
++LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
+ 
+ LOCAL_STATIC_LIBRARIES := libc_nomalloc
+ 
+diff --git a/linker/linker.cpp b/linker/linker.cpp
+index d776bdf..bf53857 100644
+--- a/linker/linker.cpp
++++ b/linker/linker.cpp
+@@ -90,6 +90,7 @@ static soinfo* sonext = &libdl_info;
+ static soinfo* somain; /* main process, always the one after libdl_info */
+ 
+ static const char* const gSoPaths[] = {
++  "/usr/libexec/droid-hybris/system/lib",
+   "/vendor/lib",
+   "/system/lib",
+   NULL
+@@ -103,6 +104,29 @@ static const char* gLdPreloadNames[LDPRELOAD_MAX + 1];
+ 
+ static soinfo* gLdPreloads[LDPRELOAD_MAX + 1];
+ 
++static void parse_library_path(const char *path, const char *delim)
++{
++    size_t len;
++    char *ldpaths_bufp = gLdPathsBuffer;
++    int i = 0;
++
++    len = strlcpy(gLdPathsBuffer, path, sizeof(gLdPathsBuffer));
++
++    while (i < LDPATH_MAX && (gLdPaths[i] = strsep(&ldpaths_bufp, delim))) {
++        if (*gLdPaths[i] != '\0')
++            ++i;
++    }
++
++    /* Forget the last path if we had to truncate; this occurs if the 2nd to
++     * last char isn't '\0' (i.e. not originally a delim). */
++    if (i > 0 && len >= sizeof(gLdPathsBuffer) &&
++            gLdPathsBuffer[sizeof(gLdPathsBuffer) - 2] != '\0') {
++        gLdPaths[i - 1] = NULL;
++    } else {
++        gLdPaths[i] = NULL;
++    }
++}
++
+ __LIBC_HIDDEN__ int gLdDebugVerbosity;
+ 
+ __LIBC_HIDDEN__ abort_msg_t* gAbortMessage = NULL; // For debuggerd.
+@@ -691,6 +715,12 @@ static int open_library(const char* name) {
+     // ...but nvidia binary blobs (at least) rely on this behavior, so fall through for now.
+   }
+ 
++  // This allows us to run android apps in a Mer rootfs
++  if (getenv("HYBRIS_LD_LIBRARY_PATH") != NULL && *gLdPaths == 0)
++  {
++    parse_library_path(getenv("HYBRIS_LD_LIBRARY_PATH"), ":");
++  }
++
+   // Otherwise we try LD_LIBRARY_PATH first, and fall back to the built-in well known paths.
+   int fd = open_library_on_path(name, gLdPaths);
+   if (fd == -1) {
