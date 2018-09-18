@@ -1,0 +1,130 @@
+diff --git a/hardware.c b/hardware.c
+index 9651f4c..84e45a1 100644
+--- a/hardware.c
++++ b/hardware.c
+@@ -30,6 +30,7 @@
+ /** Base path of the hal modules */
+ #define HAL_LIBRARY_PATH1 "/system/lib/hw"
+ #define HAL_LIBRARY_PATH2 "/vendor/lib/hw"
++#define HAL_LIBRARY_PATH3 "/usr/libexec/droid-hybris/system/lib/hw"
+ 
+ /**
+  * There are a set of variant filename for modules. The form of the filename
+@@ -145,6 +146,10 @@ int hw_get_module_by_class(const char *class_id, const char *inst,
+             if (property_get(variant_keys[i], prop, NULL) == 0) {
+                 continue;
+             }
++            snprintf(path, sizeof(path), "%s/%s.%s.so",
++                    HAL_LIBRARY_PATH3, name, prop);
++            if (access(path, R_OK) == 0) break;
++
+             snprintf(path, sizeof(path), "%s/%s.%s.so",
+                      HAL_LIBRARY_PATH2, name, prop);
+             if (access(path, R_OK) == 0) break;
+@@ -153,6 +158,10 @@ int hw_get_module_by_class(const char *class_id, const char *inst,
+                      HAL_LIBRARY_PATH1, name, prop);
+             if (access(path, R_OK) == 0) break;
+         } else {
++            snprintf(path, sizeof(path), "%s/%s.default.so",
++                     HAL_LIBRARY_PATH3, name);
++            if (access(path, R_OK) == 0) break;
++
+             snprintf(path, sizeof(path), "%s/%s.default.so",
+                      HAL_LIBRARY_PATH2, name);
+             if (access(path, R_OK) == 0) break;
+diff --git a/include/hardware/audio.h b/include/hardware/audio.h
+index f897743..e2f0eaf 100755
+--- a/include/hardware/audio.h
++++ b/include/hardware/audio.h
+@@ -29,6 +29,12 @@
+ #include <system/audio.h>
+ #include <hardware/audio_effect.h>
+ 
++#ifdef __ARM_PCS_VFP
++#define FP_ATTRIB __attribute__((pcs("aapcs")))
++#else
++#define FP_ATTRIB
++#endif
++
+ __BEGIN_DECLS
+ 
+ /**
+@@ -274,7 +280,7 @@ struct audio_stream_out {
+      * This method might produce multiple PCM outputs or hardware accelerated
+      * codecs, such as MP3 or AAC.
+      */
+-    int (*set_volume)(struct audio_stream_out *stream, float left, float right);
++    int (*set_volume)(struct audio_stream_out *stream, float left, float right) FP_ATTRIB;
+ 
+     /**
+      * Write audio buffer to driver. Returns number of bytes written, or a
+@@ -387,7 +393,7 @@ struct audio_stream_in {
+ 
+     /** set the input gain for the audio driver. This method is for
+      *  for future use */
+-    int (*set_gain)(struct audio_stream_in *stream, float gain);
++    int (*set_gain)(struct audio_stream_in *stream, float gain) FP_ATTRIB;
+ 
+     /** Read audio buffer in from audio driver. Returns number of bytes read, or a
+      *  negative status_t. If at least one frame was read prior to the error,
+@@ -462,14 +468,14 @@ struct audio_hw_device {
+     int (*init_check)(const struct audio_hw_device *dev);
+ 
+     /** set the audio volume of a voice call. Range is between 0.0 and 1.0 */
+-    int (*set_voice_volume)(struct audio_hw_device *dev, float volume);
++    int (*set_voice_volume)(struct audio_hw_device *dev, float volume) FP_ATTRIB;
+ 
+     /**
+      * set the audio volume for all audio activities other than voice call.
+      * Range between 0.0 and 1.0. If any value other than 0 is returned,
+      * the software mixer will emulate this capability.
+      */
+-    int (*set_master_volume)(struct audio_hw_device *dev, float volume);
++    int (*set_master_volume)(struct audio_hw_device *dev, float volume) FP_ATTRIB;
+ 
+     /**
+      * Get the current master volume value for the HAL, if the HAL supports
+@@ -478,7 +484,7 @@ struct audio_hw_device {
+      * the initial master volume across all HALs.  HALs which do not support
+      * this method may leave it set to NULL.
+      */
+-    int (*get_master_volume)(struct audio_hw_device *dev, float *volume);
++    int (*get_master_volume)(struct audio_hw_device *dev, float *volume) FP_ATTRIB;
+ 
+     /**
+      * set_mode is called when the audio mode changes. AUDIO_MODE_NORMAL mode
+diff --git a/include/hardware/gps.h b/include/hardware/gps.h
+index 458b5b4..7e10c0b 100644
+--- a/include/hardware/gps.h
++++ b/include/hardware/gps.h
+@@ -24,6 +24,12 @@
+ 
+ #include <hardware/hardware.h>
+ 
++#ifdef __ARM_PCS_VFP
++#define FP_ATTRIB __attribute__((pcs("aapcs")))
++#else
++#define FP_ATTRIB
++#endif
++
+ __BEGIN_DECLS
+ 
+ /**
+@@ -416,7 +422,7 @@ typedef struct {
+      *  latitude and longitude are measured in degrees
+      *  expected accuracy is measured in meters
+      */
+-    int  (*inject_location)(double latitude, double longitude, float accuracy);
++    int  (*inject_location)(double latitude, double longitude, float accuracy) FP_ATTRIB;
+ 
+     /**
+      * Specifies that the next call to start will not use the
+@@ -904,7 +910,7 @@ typedef struct {
+                                 double longitude, double radius_meters,
+                                 int last_transition, int monitor_transitions,
+                                 int notification_responsiveness_ms,
+-                                int unknown_timer_ms);
++                                int unknown_timer_ms) FP_ATTRIB;
+ 
+    /**
+     * Pause monitoring a particular geofence.
