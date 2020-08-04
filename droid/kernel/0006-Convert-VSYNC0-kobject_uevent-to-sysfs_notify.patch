@@ -1,0 +1,59 @@
+From 0d1015a056b5fce1d8c10825c19674097d6decef Mon Sep 17 00:00:00 2001
+From: elros34 <elros34@users.noreply.github.com>
+Date: Fri, 28 Sep 2018 17:22:31 +0200
+Subject: [PATCH 6/8] Convert VSYNC0 kobject_uevent to sysfs_notify
+
+---
+ drivers/video/sun6i/disp/dev_fb.c | 20 +++++++++++++-------
+ 1 file changed, 13 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/video/sun6i/disp/dev_fb.c b/drivers/video/sun6i/disp/dev_fb.c
+index d86870cb..20c2a2b6 100755
+--- a/drivers/video/sun6i/disp/dev_fb.c
++++ b/drivers/video/sun6i/disp/dev_fb.c
+@@ -1041,15 +1041,15 @@ __s32 DRV_disp_vsync_event(__u32 sel)
+     return 0;
+ }
+ 
+-static void send_vsync_work_0(struct work_struct *work)
++static ssize_t vsync0_time(struct device *dev, struct device_attribute *attr, char *buff)
+ {
+-	char buf[64];
+-	char *envp[2];
++    return snprintf(buff, PAGE_SIZE, "%llu", ktime_to_ns(g_fbi.vsync_timestamp[0]));
++}
++static DEVICE_ATTR(vsync0_time, S_IRUGO, vsync0_time, NULL);
+ 
+-	snprintf(buf, sizeof(buf), "VSYNC0=%llu",ktime_to_ns(g_fbi.vsync_timestamp[0]));
+-	envp[0] = buf;
+-	envp[1] = NULL;
+-	kobject_uevent_env(&g_fbi.dev->kobj, KOBJ_CHANGE, envp);
++static void send_vsync_work_0(struct work_struct *work)
++{
++    sysfs_notify(&g_fbi.dev->kobj, NULL, "vsync0_time");
+ }
+ 
+ static void send_vsync_work_1(struct work_struct *work)
+@@ -1659,6 +1659,7 @@ __s32 Fb_Init(__u32 from)
+     __disp_fb_create_para_t fb_para;
+     __s32 i;
+     __bool need_open_hdmi = 0;
++    int ret;
+ 
+     pr_info("[DISP]==Fb_Init==\n");
+ 
+@@ -1670,6 +1671,11 @@ __s32 Fb_Init(__u32 from)
+     INIT_WORK(&g_fbi.lcd_open_work[1], lcd_open_work_1);
+     mutex_init(&g_fbi.runtime_lock);
+     
++    ret = device_create_file(g_fbi.dev, &dev_attr_vsync0_time);
++    if (ret) {
++        dev_err(g_fbi.dev, "Failed to add vsync0_time sysfs\n");
++    }
++
+     if(from == 0)//call from lcd driver
+     {
+ #if 0//#ifdef FB_RESERVED_MEM
+-- 
+2.25.1
+

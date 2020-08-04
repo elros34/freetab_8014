@@ -1,0 +1,120 @@
+From fe1ea0d1e355e6e203546c5d819d6130a92cbf7e Mon Sep 17 00:00:00 2001
+From: Vijayavardhan Vennapusa <vvreddy@codeaurora.org>
+Date: Mon, 10 Sep 2018 11:30:17 +0200
+Subject: [PATCH 5/8] [PATCH] USB: android: Handle error conditions if
+ usb_add_config fails
+
+When bind_config() of any function driver fails, we go ahead and do a
+usb_gadget_connect() due to which remove_config is called during
+next disconnect process and a crash is observed as we delete the
+config->list once again.
+
+So if the bind_config of any function driver fails, don't call
+usb_gadget_connect(), instead handle the possible error conditions.
+
+CRs-Fixed: 488052
+Change-Id: I974e2838ef5c36e586f49ae783e8608150770883
+Signed-off-by: Vijayavardhan Vennapusa <vvreddy@codeaurora.org>
+---
+ drivers/usb/gadget/android.c   | 36 +++++++++++++++++++++++++++++-----
+ drivers/usb/gadget/composite.c |  7 ++++++-
+ 2 files changed, 37 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/usb/gadget/android.c b/drivers/usb/gadget/android.c
+index 7cb0e7f3..d561641a 100755
+--- a/drivers/usb/gadget/android.c
++++ b/drivers/usb/gadget/android.c
+@@ -197,18 +197,25 @@ static void android_work(struct work_struct *data)
+ 	}
+ }
+ 
+-static void android_enable(struct android_dev *dev)
++static int android_enable(struct android_dev *dev)
+ {
+ 	struct usb_composite_dev *cdev = dev->cdev;
++    int err = 0;
+ 
+ 	if (WARN_ON(!dev->disable_depth))
+-		return;
++        return err;
+ 
+ 	if (--dev->disable_depth == 0) {
+-		usb_add_config(cdev, &android_config_driver,
++        err = usb_add_config(cdev, &android_config_driver,
+ 					android_bind_config);
++        if (err < 0) {
++            pr_err("%s: usb_add_config failed : err: %d\n",
++                   __func__, err);
++            return err;
++        }
+ 		usb_gadget_connect(cdev->gadget);
+ 	}
++    return err;
+ }
+ 
+ static void android_disable(struct android_dev *dev)
+@@ -1117,7 +1124,18 @@ android_bind_enabled_functions(struct android_dev *dev,
+ 	list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
+ 		ret = f->bind_config(f, c);
+ 		if (ret) {
+-			pr_err("%s: %s failed", __func__, f->name);
++            pr_err("%s: %s failed\n", __func__, f->name);
++            while (!list_empty(&c->functions)) {
++                struct usb_function		*f;
++
++                f = list_first_entry(&c->functions,
++                    struct usb_function, list);
++                list_del(&f->list);
++                if (f->unbind)
++                    f->unbind(c, f);
++            }
++            if (c->unbind)
++                c->unbind(c);
+ 			return ret;
+ 		}
+ 	}
+@@ -1250,6 +1268,7 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
+ 	struct usb_composite_dev *cdev = dev->cdev;
+ 	struct android_usb_function *f;
+ 	int enabled = 0;
++    int err = 0;
+ 
+ 
+ 	if (!cdev)
+@@ -1273,7 +1292,14 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
+ 			if (f->enable)
+ 				f->enable(f);
+ 		}
+-		android_enable(dev);
++        err = android_enable(dev);
++        if (err < 0) {
++            pr_err("%s: android_enable failed\n", __func__);
++            dev->connected = 0;
++            dev->enabled = false;
++            mutex_unlock(&dev->mutex);
++            return size;
++        }
+ 		dev->enabled = true;
+ 	} else if (!enabled && dev->enabled) {
+ 		android_disable(dev);
+diff --git a/drivers/usb/gadget/composite.c b/drivers/usb/gadget/composite.c
+index 83c79436..57c7c134 100755
+--- a/drivers/usb/gadget/composite.c
++++ b/drivers/usb/gadget/composite.c
+@@ -822,7 +822,12 @@ int usb_remove_config(struct usb_composite_dev *cdev,
+ 
+ 	spin_lock_irqsave(&cdev->lock, flags);
+ 
+-	if (cdev->config == config)
++    if (WARN_ON(!config->cdev)) {
++        spin_unlock_irqrestore(&cdev->lock, flags);
++        return 0;
++    }
++
++    if (cdev->config == config)
+ 		reset_config(cdev);
+ 
+ 	list_del(&config->list);
+-- 
+2.25.1
+

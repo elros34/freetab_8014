@@ -1,0 +1,40 @@
+From 9f1648a99b4550b33d8641b0b5ad74602c9fd261 Mon Sep 17 00:00:00 2001
+From: elros34 <elros34@users.noreply.github.com>
+Date: Mon, 3 Sep 2018 16:22:37 +0200
+Subject: [PATCH 4/8] sun6i: disp: Add maximum backlight attribute to sysfs
+
+---
+ drivers/video/sun6i/disp/dev_disp_attrnode.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/drivers/video/sun6i/disp/dev_disp_attrnode.c b/drivers/video/sun6i/disp/dev_disp_attrnode.c
+index dc9335d1..9bb20ffb 100755
+--- a/drivers/video/sun6i/disp/dev_disp_attrnode.c
++++ b/drivers/video/sun6i/disp/dev_disp_attrnode.c
+@@ -551,6 +551,15 @@ static ssize_t disp_lcd_bl_store(struct device *dev,
+ static DEVICE_ATTR(lcd_bl, S_IRUGO|S_IWUSR|S_IWGRP,
+ 		disp_lcd_bl_show, disp_lcd_bl_store);
+ 
++static ssize_t disp_lcd_bl_max_show(struct device *dev,
++        struct device_attribute *attr, char *buf)
++{
++    return sprintf(buf, "255\n");
++}
++
++static DEVICE_ATTR(lcd_bl_max, S_IRUGO,
++        disp_lcd_bl_max_show, NULL);
++
+ static ssize_t disp_lcd_src_show(struct device *dev,
+ 		struct device_attribute *attr, char *buf)
+ {
+@@ -1751,6 +1760,7 @@ static struct attribute *disp_attributes[] = {
+     &dev_attr_vsync_event_enable.attr,
+     &dev_attr_lcd.attr,
+     &dev_attr_lcd_bl.attr,
++    &dev_attr_lcd_bl_max.attr,
+     &dev_attr_hdmi.attr,
+     &dev_attr_script_dump.attr,
+     &dev_attr_colorbar.attr,
+-- 
+2.25.1
+

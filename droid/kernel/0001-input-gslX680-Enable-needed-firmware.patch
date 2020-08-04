@@ -1,0 +1,32 @@
+From aeff84c1b541f600c7a597aa9451bd7681d1ff50 Mon Sep 17 00:00:00 2001
+From: elros34 <elros34@users.noreply.github.com>
+Date: Sat, 18 Aug 2018 23:57:10 +0200
+Subject: [PATCH 1/8] input: gslX680: Enable needed firmware
+
+---
+ drivers/input/touchscreen/gslX680.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/input/touchscreen/gslX680.c b/drivers/input/touchscreen/gslX680.c
+index f6300fa9..20becc14 100644
+--- a/drivers/input/touchscreen/gslX680.c
++++ b/drivers/input/touchscreen/gslX680.c
+@@ -58,6 +58,7 @@
+ //gsl1680_2.h and gsl1680.h difference lies in the x axis, y axis and interrupt the parameters of the differences
+ #include "gsl2680.h"        //resolution:1024*768
+ #include "gsl3680.h"        //resolution:2048*1563
++#include "gslX680_onda809q9.h" //resolution:1024*768
+ 
+ 
+ struct gslX680_fw_array {
+@@ -70,6 +71,7 @@ struct gslX680_fw_array {
+ 	{"gsl1680_2",   ARRAY_SIZE(GSL1680_FW_2), GSL1680_FW_2},
+ 	{"gsl2680",     ARRAY_SIZE(GSL2680_FW),   GSL2680_FW},
+ 	{"gsl3680",     ARRAY_SIZE(GSL3680_FW),   GSL3680_FW},
++    {"gslx680_onda809q9", ARRAY_SIZE(GSLX680_FW_ONDA809Q9), GSLX680_FW_ONDA809Q9},
+ };
+ 
+ #define FOR_TSLIB_TEST
+-- 
+2.25.1
+
