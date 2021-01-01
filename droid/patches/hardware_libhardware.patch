@@ -1,3 +1,11 @@
+commit 98db79f3ac36c0059a8ba5aba11be90b79656e64
+Author: elros34 <elros34@users.noreply.github.com>
+Date:   Mon Aug 27 18:25:13 2018 +0200
+
+    Hybris patches based on: https://github.com/mer-hybris/android_hardware_libhardware/commits/hybris-11.0-44S
+    
+    Authors: siteshwar, mlehtima, Franz-Josef Haider
+
 diff --git a/hardware.c b/hardware.c
 index 9651f4c..84e45a1 100644
 --- a/hardware.c

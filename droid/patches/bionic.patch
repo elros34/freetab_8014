@@ -1,14 +1,16 @@
-commit 3ad889930d11d16b069962819ab1f03ce9258d8c
+commit 89c7d6e0561d5c169fa3d8f995a8973adff6f9b5
 Author: elros34 <elros34@users.noreply.github.com>
-Date:   Sun Apr 29 13:38:24 2018 +0200
+Date:   Mon Aug 27 17:57:29 2018 +0200
 
-    Hybris patch
+    Hybris patches based on: https://github.com/mer-hybris/android_bionic/commits/hybris-11.0-44S
+    
+    Authors: siteshwar, Ricardo Salveti de Araujo
 
 diff --git a/libc/Android.mk b/libc/Android.mk
-index 1b02b78..88acf43 100644
+index 9610c14..8f20f6e 100644
 --- a/libc/Android.mk
 +++ b/libc/Android.mk
-@@ -230,7 +230,6 @@ libc_bionic_src_files := \
+@@ -231,7 +231,6 @@ libc_bionic_src_files := \
      bionic/sbrk.cpp \
      bionic/scandir.cpp \
      bionic/sched_getaffinity.cpp \
@@ -260,7 +262,7 @@ index d1773a8..4becf5a 100644
  LOCAL_STATIC_LIBRARIES := libc_nomalloc
  
 diff --git a/linker/linker.cpp b/linker/linker.cpp
-index d776bdf..bf53857 100644
+index 623be29..b55d3b0 100644
 --- a/linker/linker.cpp
 +++ b/linker/linker.cpp
 @@ -90,6 +90,7 @@ static soinfo* sonext = &libdl_info;
